@@ -1,17 +1,43 @@
 use crate::data::{Bin, Item};
-use std::cmp::{Reverse};
+use std::collections::HashMap;
+use std::io::Write;
 
-// First Fit Descending (item-centric)
-pub fn first_fit_descending<F>(items: Vec<Item>, bin_capacity: Vec<u32>, cmp_key: F) -> Vec<Bin>
+use std::error::Error;
+
+use good_lp::{constraint, default_solver, Solution, SolverModel, variables};
+
+// Bin Packing Problem Solution
+pub struct BPSolution {
+    pub bins: Vec<Bin>,
+    pub item_bin_mapping: HashMap<usize, usize>,
+}
+
+impl BPSolution {
+    pub fn new() -> BPSolution {
+        BPSolution { bins: Vec::new(), item_bin_mapping: HashMap::new() }
+    }
+
+    pub fn write_to_file(&self, file_path: &str) -> Result<(), Box<dyn Error>> {
+        let mut file = std::fs::File::create(file_path)?;
+        for (k, v) in self.item_bin_mapping.iter() {
+            writeln!(file, "{}: {}", k, v)?;
+        }
+        Ok(())
+    }
+}
+
+// First Fit Descending (Item-centric version)
+pub fn first_fit_descending<F>(items: Vec<Item>, bin_capacity: Vec<f64>, cmp_key: F) -> Vec<Bin>
 where 
-    F: Fn(&Item) -> Reverse<u32>
+    F: Fn(&Item) -> f64
 {
     let mut bins: Vec<Bin> = Vec::new();
 
     let mut sorted_items = items.clone();
 
     // sort items by the custom rule
-    sorted_items.sort_by_key(cmp_key);
+    // sorted_items.sort_by_key(cmp_key);
+    sorted_items.sort_by(|a, b| cmp_key(b).partial_cmp(&cmp_key(a)).unwrap());
 
     // put items into bins
     for item in sorted_items {
@@ -35,15 +61,12 @@ where
     bins
 }
 
-// First Fit Descending Bin-centric
-pub fn first_fit_descending_bin_centric<F>(items: Vec<Item>, bin_capacity: Vec<u32>, cmp_key: F) -> Vec<Bin>
+// First Fit Descending (Bin-centric version)
+pub fn first_fit_descending_bin_centric<F>(items: Vec<Item>, bin_capacity: Vec<f64>, cmp_key: F) -> BPSolution
 where 
-    F: Fn(&Item, &Bin) -> u32
+    F: Fn(&Item, &Bin) -> f64
 {
-    let mut bins: Vec<Bin> = Vec::new();
-
-    // let mut sorted_items = items.clone();
-    // sorted_items.sort_by_key(cmp_key);
+    let mut solution = BPSolution::new();
     let mut used_item_num = 0;
 
     let mut sorted_items = items.clone();
@@ -53,12 +76,13 @@ where
 
         loop {
             // place "largest" remaining item that fits in the bin
-            sorted_items.sort_by_key(|item| Reverse(cmp_key(item, &new_bin)));
+            sorted_items.sort_by(|a, b| cmp_key(b, &new_bin).partial_cmp(&cmp_key(a, &new_bin)).unwrap());
             
             let mut placed = false;
             for (i, item) in sorted_items.iter().enumerate() {
                 if new_bin.can_fit(&item) {
                     new_bin.add_item(&item);
+                    solution.item_bin_mapping.insert(item.number, solution.bins.len());
                     sorted_items.remove(i);
                     used_item_num += 1;
                     placed = true;
@@ -69,22 +93,21 @@ where
                 break;
             }
         }
-        bins.push(new_bin);
+        solution.bins.push(new_bin);
     }
 
-    bins
+    solution
 }
 
 
-// First Fit 算法
-pub fn first_fit(items: Vec<Item>, bin_capacity: Vec<u32>) -> Vec<Bin> {
-    let mut bins: Vec<Bin> = Vec::new();
+// First Fit
+pub fn first_fit(items: Vec<Item>, bin_capacity: Vec<f64>) -> BPSolution {
+    let mut solution = BPSolution::new();
 
     for item in items {
         let mut placed = false;
-        
-        // 尝试将项目放入已有的箱子
-        for bin in bins.iter_mut() {
+        // try to place the item in an existing bin
+        for bin in solution.bins.iter_mut() {
             if bin.can_fit(&item) {
                 bin.add_item(&item);
                 placed = true;
@@ -92,13 +115,32 @@ pub fn first_fit(items: Vec<Item>, bin_capacity: Vec<u32>) -> Vec<Bin> {
             }
         }
 
-        // 如果没有合适的箱子，创建一个新的箱子
+        // if the item cannot be placed in any existing bin, create a new bin
         if !placed {
             let mut new_bin = Bin::new(bin_capacity.clone());
             new_bin.add_item(&item);
-            bins.push(new_bin);
+            solution.bins.push(new_bin);
         }
     }
 
-    bins
+    solution
 }
+
+
+// pub fn linear_programming() -> Result<(), Box<dyn Error>> {
+//     // calculate all the configurations first
+    
+//     variables! {
+//         vars:
+//                a <= 1;
+//           2 <= b <= 4;
+//     } // variables can also be added dynamically
+//     let solution = vars.maximise(10 * (a - b / 5) - b)
+//         .using(default_solver) // multiple solvers available
+//         .with(constraint!(a + 2 <= b))
+//         .with(constraint!(1 + a >= 4 - b))
+//         .solve()?;
+//     println!("a={}   b={}", solution.value(a), solution.value(b));
+//     println!("a + b = {}", solution.eval(a + b));
+//     Ok(())
+// }

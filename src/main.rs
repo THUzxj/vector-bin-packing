@@ -3,36 +3,33 @@ mod algorithms;
 mod heuristics;
 use std::cmp::Reverse;
 
-fn example_code() {
-    // 示例数据
-    let items = vec![
-        data::Item { dimensions: vec![2, 4] },
-        data::Item { dimensions: vec![3, 1] },
-        data::Item { dimensions: vec![4, 3] },
-        data::Item { dimensions: vec![1, 2] },
-    ];
 
-    let bin_capacity = vec![5, 5];
 
-    let bins = algorithms::first_fit_descending(items, bin_capacity, |a| Reverse(a.dimensions_product()));
+fn example_vm() {
+    let file_path = "dataset/cpu_usage_matrix_0.01_0_100000.csv";
+    let file = std::fs::read_to_string(file_path).expect("Failed to read file");
+    let mut lines = file.lines();
 
-    // 输出结果
-    for (i, bin) in bins.iter().enumerate() {
+    let items: Vec<data::Item> = lines.enumerate().map(|(i, line)| {
+            let dimensions: Vec<f64> = line.split_terminator(",").map(|s| s.parse().unwrap()).collect();
+            data::Item { number: i,  dimensions }
+        }).collect();
+
+    let dimension_num = items[0].dimensions.len();
+    // all capacities are the same
+    let bin_capacity: Vec<f64> = vec![64.0; dimension_num as usize];
+    let bin_packing = data::BinPacking::new(dimension_num.try_into().unwrap(), items, bin_capacity);
+
+    let solution = algorithms::first_fit_descending_bin_centric(bin_packing.items, bin_packing.bin_capacity, heuristics::dot_product_heuristic);
+
+    // print results
+    for (i, bin) in solution.bins.iter().enumerate() {
         println!("Bin {}: {:?}", i + 1, bin);
     }
-}
 
-fn example_from_file() {
-    let bin_packing = data::BinPacking::load_from_file("dataset/data.txt");
-
-    let bins = algorithms::first_fit_descending_bin_centric(bin_packing.items, bin_packing.bin_capacity, heuristics::norm_based_greedy_heuristic);
-
-    // 输出结果
-    for (i, bin) in bins.iter().enumerate() {
-        println!("Bin {}: {:?}", i + 1, bin);
-    }
+    solution.write_to_file("output/packing_results.txt");
 }
 
 fn main() {
-    example_from_file();
+    example_vm();
 }
