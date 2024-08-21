@@ -1,5 +1,5 @@
 use crate::data::{Bin, Item};
-use std::collections::HashMap;
+use std::{collections::HashMap, fmt::Debug};
 use std::io::Write;
 
 use std::error::Error;
@@ -7,13 +7,13 @@ use std::error::Error;
 use good_lp::{constraint, default_solver, Solution, SolverModel, variables};
 
 // Bin Packing Problem Solution
-pub struct BPSolution {
-    pub bins: Vec<Bin>,
+pub struct BPSolution<T> {
+    pub bins: Vec<Bin<T>>,
     pub item_bin_mapping: HashMap<usize, usize>,
 }
 
-impl BPSolution {
-    pub fn new() -> BPSolution {
+impl<T: Debug> BPSolution<T> {
+    pub fn new() -> BPSolution<T> {
         BPSolution { bins: Vec::new(), item_bin_mapping: HashMap::new() }
     }
 
@@ -24,14 +24,21 @@ impl BPSolution {
         }
         Ok(())
     }
+
+    pub fn print(&self) {
+        for (i, bin) in self.bins.iter().enumerate() {
+            println!("Bin {}: {:?}", i + 1, bin);
+        }
+    }
 }
 
 // First Fit Descending (Item-centric version)
-pub fn first_fit_descending<F>(items: Vec<Item>, bin_capacity: Vec<f64>, cmp_key: F) -> Vec<Bin>
+pub fn first_fit_descending<F, T>(items: Vec<&Item<T>>, bin_capacity: Vec<T>, cmp_key: F) -> BPSolution<T>
 where 
-    F: Fn(&Item) -> f64
+    F: Fn(&Item<T>) -> T,
+    T: Debug + Copy + Clone + num_traits::NumAssign + std::cmp::PartialOrd + TryInto<f64> 
 {
-    let mut bins: Vec<Bin> = Vec::new();
+    let mut solution = BPSolution::new();
 
     let mut sorted_items = items.clone();
 
@@ -43,9 +50,10 @@ where
     for item in sorted_items {
         let mut placed = false;
 
-        for bin in bins.iter_mut() {
+        for bin in solution.bins.iter_mut() {
             if bin.can_fit(&item) {
                 bin.add_item(&item);
+                solution.item_bin_mapping.insert(item.number, solution.bins.len());
                 placed = true;
                 break;
             }
@@ -54,17 +62,18 @@ where
         if !placed {
             let mut new_bin = Bin::new(bin_capacity.clone());
             new_bin.add_item(&item);
-            bins.push(new_bin);
+            solution.bins.push(new_bin);
         }
     }
 
-    bins
+    solution
 }
 
 // First Fit Descending (Bin-centric version)
-pub fn first_fit_descending_bin_centric<F>(items: Vec<Item>, bin_capacity: Vec<f64>, cmp_key: F) -> BPSolution
+pub fn first_fit_descending_bin_centric<F, T>(items: Vec<&Item<T>>, bin_capacity: Vec<T>, cmp_key: F) -> BPSolution<T>
 where 
-    F: Fn(&Item, &Bin) -> f64
+    F: Fn(&Item<T>, &Bin<T>) -> T,
+    T: Debug + Copy + Clone + num_traits::NumAssign + std::cmp::PartialOrd + TryInto<f64>
 {
     let mut solution = BPSolution::new();
     let mut used_item_num = 0;
@@ -101,7 +110,9 @@ where
 
 
 // First Fit
-pub fn first_fit(items: Vec<Item>, bin_capacity: Vec<f64>) -> BPSolution {
+pub fn first_fit<T>(items: Vec<&Item<T>>, bin_capacity: Vec<T>) -> BPSolution<T>
+where T: Debug + Copy + Clone + num_traits::NumAssign + std::cmp::PartialOrd + TryInto<f64> 
+{
     let mut solution = BPSolution::new();
 
     for item in items {
